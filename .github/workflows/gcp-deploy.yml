@@ -1,0 +1,117 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: asia-northeast3
+  GKE_CLUSTER_NAME: microservices-cluster
+  GKE_ZONE: asia-northeast3-a
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: '1.6.0'
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform-gcp/environments/production
+
+    - name: Terraform Plan
+      run: terraform plan -no-color -out=tfplan
+      working-directory: ./terraform-gcp/environments/production
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: terraform-plan
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: '1.6.0'
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform-gcp/environments/production
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
+      working-directory: ./terraform-gcp/environments/production
+
+    - name: Deploy Kubernetes manifests
+      run: |
+        # Get GKE credentials
+        gcloud container clusters get-credentials $GKE_CLUSTER_NAME --zone $GKE_ZONE --project $GCP_PROJECT_ID
+        
+        # Deploy infrastructure
+        kubectl apply -f k8s-gcp/infrastructure/namespace.yaml
+        kubectl apply -f k8s-gcp/infrastructure/secrets.yaml
+        
+        # Deploy services
+        kubectl apply -f k8s-gcp/user-service/
+        kubectl apply -f k8s-gcp/sleep-service/
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker to use gcloud as a credential helper
+      run: gcloud auth configure-docker
+
+    - name: Build and push user-service
+      run: |
+        cd user-service
+        docker build -t asia-northeast3-docker.pkg.dev/$GCP_PROJECT_ID/microservices/user-service:${{ github.sha }} .
+        docker push asia-northeast3-docker.pkg.dev/$GCP_PROJECT_ID/microservices/user-service:${{ github.sha }}
+
+    - name: Build and push sleep-service
+      run: |
+        cd sleep-service
+        docker build -t asia-northeast3-docker.pkg.dev/$GCP_PROJECT_ID/microservices/sleep-service:${{ github.sha }} .
+        docker push asia-northeast3-docker.pkg.dev/$GCP_PROJECT_ID/microservices/sleep-service:${{ github.sha }}
