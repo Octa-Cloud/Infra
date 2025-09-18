@@ -13,17 +13,11 @@ env:
   GKE_ZONE: asia-northeast3-a
 
 jobs:
-  terraform-plan:
+  deploy-k8s:
     runs-on: ubuntu-latest
-    
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: '1.6.0'
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
@@ -32,43 +26,6 @@ jobs:
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
-
-    - name: Terraform Init
-      run: terraform init
-      working-directory: ./terraform-gcp/environments/production
-
-    - name: Terraform Plan
-      run: terraform plan -no-color -out=tfplan
-      working-directory: ./terraform-gcp/environments/production
-
-  terraform-apply:
-    runs-on: ubuntu-latest
-    needs: terraform-plan
-    
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: '1.6.0'
-
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
-
-    - name: Terraform Init
-      run: terraform init
-      working-directory: ./terraform-gcp/environments/production
-
-    - name: Terraform Apply
-      run: terraform apply -auto-approve
-      working-directory: ./terraform-gcp/environments/production
 
     - name: Deploy Kubernetes manifests
       run: |
