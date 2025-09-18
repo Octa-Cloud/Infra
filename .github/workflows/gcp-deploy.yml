@@ -27,17 +27,22 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
+    - name: Install GKE auth plugin
+      run: |
+        gcloud components install gke-gcloud-auth-plugin --quiet
+        echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
     - name: Deploy Kubernetes manifests
       run: |
         # Get GKE credentials
         gcloud container clusters get-credentials $GKE_CLUSTER_NAME --region $GCP_REGION --project $GCP_PROJECT_ID
         
         # Deploy infrastructure
-        kubectl apply -f k8s-gcp/infrastructure/namespace.yaml
-        kubectl apply -f k8s-gcp/infrastructure/secrets.yaml
+        kubectl apply -f infrastructure/k8s-gcp/infrastructure/namespace.yaml
+        kubectl apply -f infrastructure/k8s-gcp/infrastructure/secrets.yaml
         
         # Deploy services
-        kubectl apply -f k8s-gcp/user-service/
-        kubectl apply -f k8s-gcp/sleep-service/
+        kubectl apply -f infrastructure/k8s-gcp/user-service/
+        kubectl apply -f infrastructure/k8s-gcp/sleep-service/
 
   # build-and-push job removed: images are built in their own repos' CI
