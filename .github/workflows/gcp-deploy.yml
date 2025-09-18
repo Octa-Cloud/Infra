@@ -5,12 +5,19 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      IMAGE_URI:
+        description: "Full image URI to deploy (overrides manifest)"
+        required: false
+        type: string
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: asia-northeast3
   GKE_CLUSTER_NAME: microservices-cluster
   GKE_ZONE: asia-northeast3-a
+  IMAGE_URI: ${{ inputs.IMAGE_URI }}
 
 jobs:
   deploy-k8s:
@@ -62,17 +69,24 @@ jobs:
           echo "::warning::infrastructure/k8s-gcp/sleep-service not found, skipping"
         fi
 
-        # Force update user-service image from manifest and verify rollout
-        if [ -f infrastructure/k8s-gcp/user-service/deployment-gcp.yaml ]; then
+        # Force update user-service image
+        if [ -n "${IMAGE_URI:-}" ]; then
+          IMG="$IMAGE_URI"
+          echo "Using IMAGE_URI input: $IMG"
+        elif [ -f infrastructure/k8s-gcp/user-service/deployment-gcp.yaml ]; then
           IMG=$(grep -E "^\s*image:" infrastructure/k8s-gcp/user-service/deployment-gcp.yaml | awk '{print $2}')
-          if [ -n "$IMG" ]; then
-            echo "Setting user-service image to $IMG"
-            kubectl -n microservices set image deployment/user-service user-service="$IMG"
-            kubectl -n microservices rollout status deployment/user-service
-            echo -n "Deployed image: "; kubectl -n microservices get deploy user-service -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-          else
-            echo "::warning::Could not extract image from deployment-gcp.yaml"
-          fi
+          echo "Using image from manifest: $IMG"
+        else
+          IMG=""
+        fi
+
+        if [ -n "$IMG" ]; then
+          echo "Setting user-service image to $IMG"
+          kubectl -n microservices set image deployment/user-service user-service="$IMG"
+          kubectl -n microservices rollout status deployment/user-service
+          echo -n "Deployed image: "; kubectl -n microservices get deploy user-service -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+        else
+          echo "::warning::No image to deploy (no input IMAGE_URI and no manifest image)"
         fi
 
   # build-and-push job removed: images are built in their own repos' CI
