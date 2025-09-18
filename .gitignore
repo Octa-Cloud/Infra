@@ -7,9 +7,3 @@ override.tf
 override.tf.json
 *_override.tf
 .terragrunt-cache/
-**/.terraform/**
-*.tfstate
-*.tfstate.*
-**/.terraform/**
-*.tfstate
-*.tfstate.*
