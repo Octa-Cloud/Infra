@@ -3,22 +3,35 @@ name: Terraform Plan
 on:
   pull_request:
     paths:
-      - 'terraform/**'
+      - 'infrastructure/terraform-gcp/**'
     branches: [ main ]
 
 env:
   TF_VERSION: '1.6.0'
-  TF_WORKING_DIR: './terraform/environments/production'
+  TF_WORKING_DIR: 'infrastructure/terraform-gcp/environments/production'
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
   terraform-plan:
-    name: 'Terraform Plan'
+    name: 'Terraform Plan (GCP)'
     runs-on: ubuntu-latest
     environment: production
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud (WIF)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+        token_format: access_token
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -32,7 +45,7 @@ jobs:
 
     - name: Terraform Init
       id: init
-      run: terraform init
+      run: terraform init -input=false
       working-directory: ${{ env.TF_WORKING_DIR }}
 
     - name: Terraform Validate
@@ -42,35 +55,16 @@ jobs:
 
     - name: Terraform Plan
       id: plan
-      run: terraform plan -no-color -out=tfplan
+      run: terraform plan -no-color -input=false
       working-directory: ${{ env.TF_WORKING_DIR }}
 
     - name: Comment PR
-      uses: actions/github-script@v6
+      uses: marocchino/sticky-pull-request-comment@v2
       if: github.event_name == 'pull_request'
-      env:
-        PLAN: ${{ steps.plan.outputs.stdout }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-          
-          <details><summary>Show Plan</summary>
-          
-          \`\`\`terraform
-          ${process.env.PLAN}
-          \`\`\`
-          
-          </details>
-          
-          *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
-          
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: output
-          })
+        recreate: true
+        header: terraform-plan
+        message: |
+          ```terraform
+          ${{ steps.plan.outputs.stdout }}
+          ```

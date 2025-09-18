@@ -3,16 +3,17 @@ name: Terraform Apply
 on:
   push:
     paths:
-      - 'terraform/**'
+      - 'infrastructure/terraform-gcp/**'
     branches: [ main ]
 
 env:
   TF_VERSION: '1.6.0'
-  TF_WORKING_DIR: './terraform/environments/production'
+  TF_WORKING_DIR: 'infrastructure/terraform-gcp/environments/production'
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
   terraform-apply:
-    name: 'Terraform Apply'
+    name: 'Terraform Apply (GCP)'
     runs-on: ubuntu-latest
     environment: production
 
@@ -20,60 +21,37 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Authenticate to Google Cloud (WIF)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+        token_format: access_token
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ap-northeast-2
-
     - name: Terraform Init
-      run: terraform init
+      run: terraform init -input=false
       working-directory: ${{ env.TF_WORKING_DIR }}
 
     - name: Terraform Plan
-      run: terraform plan -no-color -out=tfplan
+      run: terraform plan -no-color -input=false -out=tfplan
       working-directory: ${{ env.TF_WORKING_DIR }}
 
     - name: Terraform Apply
       run: terraform apply -auto-approve tfplan
       working-directory: ${{ env.TF_WORKING_DIR }}
 
-    - name: Output EKS cluster info
+    - name: Outputs
       run: |
-        echo "EKS Cluster Name:"
-        terraform output -raw cluster_name
-        echo ""
-        echo "EKS Cluster Endpoint:"
-        terraform output -raw cluster_endpoint
+        echo "Cluster Name:" && terraform output -raw cluster_name || true
+        echo "Cluster Endpoint:" && terraform output -raw cluster_endpoint || true
       working-directory: ${{ env.TF_WORKING_DIR }}
-
-    - name: Deploy Kubernetes manifests
-      run: |
-        # Install kubectl
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-        chmod +x kubectl
-        sudo mv kubectl /usr/local/bin/
-        
-        # Update kubeconfig
-        aws eks update-kubeconfig --region ap-northeast-2 --name microservices-cluster
-        
-        # Deploy infrastructure
-        kubectl apply -f k8s/infrastructure/namespace.yaml
-        kubectl apply -f k8s/infrastructure/secrets.yaml
-        kubectl apply -f k8s/infrastructure/mysql.yaml
-        kubectl apply -f k8s/infrastructure/redis.yaml
-        kubectl apply -f k8s/infrastructure/mongodb.yaml
-        kubectl apply -f k8s/infrastructure/kafka.yaml
-        kubectl apply -f k8s/infrastructure/ingress.yaml
-        
-        # Wait for infrastructure to be ready
-        kubectl wait --for=condition=available --timeout=300s deployment/mysql -n microservices
-        kubectl wait --for=condition=available --timeout=300s deployment/redis -n microservices
-        kubectl wait --for=condition=available --timeout=300s deployment/mongodb -n microservices
-        kubectl wait --for=condition=available --timeout=300s deployment/kafka -n microservices
