@@ -34,15 +34,32 @@ jobs:
 
     - name: Deploy Kubernetes manifests
       run: |
+        set -euo pipefail
         # Get GKE credentials
-        gcloud container clusters get-credentials $GKE_CLUSTER_NAME --region $GCP_REGION --project $GCP_PROJECT_ID
-        
-        # Deploy infrastructure
-        kubectl apply -f infrastructure/k8s-gcp/infrastructure/namespace.yaml
-        kubectl apply -f infrastructure/k8s-gcp/infrastructure/secrets.yaml
-        
-        # Deploy services
-        kubectl apply -f infrastructure/k8s-gcp/user-service/
-        kubectl apply -f infrastructure/k8s-gcp/sleep-service/
+        gcloud container clusters get-credentials "$GKE_CLUSTER_NAME" --region "$GCP_REGION" --project "$GCP_PROJECT_ID"
+
+        # Ensure namespace exists
+        kubectl get ns microservices >/dev/null 2>&1 || kubectl create namespace microservices
+
+        # Apply infra secrets if present
+        if [ -f infrastructure/k8s-gcp/infrastructure/secrets.yaml ]; then
+          kubectl apply -f infrastructure/k8s-gcp/infrastructure/secrets.yaml -n microservices
+        else
+          echo "::warning::infrastructure/k8s-gcp/infrastructure/secrets.yaml not found, skipping"
+        fi
+
+        # Apply user-service manifests if directory exists
+        if [ -d infrastructure/k8s-gcp/user-service ]; then
+          kubectl apply -f infrastructure/k8s-gcp/user-service -n microservices
+        else
+          echo "::warning::infrastructure/k8s-gcp/user-service not found, skipping"
+        fi
+
+        # Apply sleep-service manifests if directory exists
+        if [ -d infrastructure/k8s-gcp/sleep-service ]; then
+          kubectl apply -f infrastructure/k8s-gcp/sleep-service -n microservices
+        else
+          echo "::warning::infrastructure/k8s-gcp/sleep-service not found, skipping"
+        fi
 
   # build-and-push job removed: images are built in their own repos' CI
