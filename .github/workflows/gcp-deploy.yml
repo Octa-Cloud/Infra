@@ -30,7 +30,7 @@ jobs:
     - name: Deploy Kubernetes manifests
       run: |
         # Get GKE credentials
-        gcloud container clusters get-credentials $GKE_CLUSTER_NAME --zone $GKE_ZONE --project $GCP_PROJECT_ID
+        gcloud container clusters get-credentials $GKE_CLUSTER_NAME --region $GCP_REGION --project $GCP_PROJECT_ID
         
         # Deploy infrastructure
         kubectl apply -f k8s-gcp/infrastructure/namespace.yaml
