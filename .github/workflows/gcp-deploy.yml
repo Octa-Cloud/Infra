@@ -62,4 +62,17 @@ jobs:
           echo "::warning::infrastructure/k8s-gcp/sleep-service not found, skipping"
         fi
 
+        # Force update user-service image from manifest and verify rollout
+        if [ -f infrastructure/k8s-gcp/user-service/deployment-gcp.yaml ]; then
+          IMG=$(grep -E "^\s*image:" infrastructure/k8s-gcp/user-service/deployment-gcp.yaml | awk '{print $2}')
+          if [ -n "$IMG" ]; then
+            echo "Setting user-service image to $IMG"
+            kubectl -n microservices set image deployment/user-service user-service="$IMG"
+            kubectl -n microservices rollout status deployment/user-service
+            echo -n "Deployed image: "; kubectl -n microservices get deploy user-service -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          else
+            echo "::warning::Could not extract image from deployment-gcp.yaml"
+          fi
+        fi
+
   # build-and-push job removed: images are built in their own repos' CI
