@@ -15,7 +15,6 @@ env:
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     
     steps:
     - name: Checkout
@@ -44,7 +43,6 @@ jobs:
 
   terraform-apply:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     needs: terraform-plan
     
     steps:
