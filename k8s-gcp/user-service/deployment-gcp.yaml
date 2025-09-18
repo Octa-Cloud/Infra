@@ -27,7 +27,7 @@ spec:
       serviceAccountName: gke-sa   # 파드에서 사용할 K8s 서비스계정(Workload Identity 연동)
       containers:
       - name: user-service
-        image: asia-northeast3-docker.pkg.dev/mong-gcp/microservices/user-service:1758163704 # 컨테이너 이미지
+        image: asia-northeast3-docker.pkg.dev/mong-gcp/microservices/user-service:a75461062e549ef1225d024dca34c351a286cce8
         ports:
         - containerPort: 8080      # 애플리케이션 리스닝 포트
         env:
