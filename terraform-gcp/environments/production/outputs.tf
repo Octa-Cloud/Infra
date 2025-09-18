@@ -57,6 +57,6 @@ output "pubsub_topics" {
 }
 
 output "container_registry_url" {
-  description = "Container Registry URL"
-  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_container_registry.registry.id}"
+  description = "Artifact Registry URL (repository: microservices)"
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/microservices"
 }

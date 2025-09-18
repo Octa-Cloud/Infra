@@ -55,7 +55,7 @@ variable "db_instance_class" {
 variable "db_username" {
   description = "RDS master username"
   type        = string
-  default     = "admin"
+  default     = "root"
 }
 
 variable "db_password" {
@@ -79,7 +79,7 @@ variable "docdb_instance_class" {
 variable "docdb_username" {
   description = "DocumentDB master username"
   type        = string
-  default     = "admin"
+  default     = "root"
 }
 
 variable "docdb_password" {

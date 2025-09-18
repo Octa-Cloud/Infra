@@ -4,8 +4,8 @@ metadata:
   name: mysql-secret
 type: Opaque
 data:
-  username: cm9vdA==  # base64 encoded 'root'
-  password: cGFzc3dvcmQ=  # base64 encoded 'password' - change this!
+  username: cm9vdA==
+  password: cmxhcnVkcmIxMTk=
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -48,7 +48,7 @@ spec:
               name: mysql-secret
               key: password
         - name: MYSQL_DATABASE
-          value: "user_db"
+          value: "mong"
         resources:
           requests:
             memory: "512Mi"

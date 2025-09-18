@@ -66,7 +66,7 @@ variable "db_disk_type" {
 variable "db_username" {
   description = "Cloud SQL username"
   type        = string
-  default     = "admin"
+  default     = "root"
 }
 
 variable "db_password" {

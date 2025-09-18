@@ -1,11 +1,11 @@
 # Copy this file to terraform.tfvars and fill in your values
 
-project_id = "your-gcp-project-id"
+project_id = "mong-gcp"
 project_name = "microservices"
 region = "asia-northeast3"
 
 # Database password (use strong password in production)
-db_password = "your-secure-db-password"
+db_password = "qwer1234"
 
 # Availability zones
 availability_zones = ["asia-northeast3-a", "asia-northeast3-b"]
@@ -24,7 +24,7 @@ enable_autopilot = true
 db_tier = "db-f1-micro"
 db_disk_size = 20
 db_disk_type = "PD_SSD"
-db_username = "root"
+db_username = "admin"
 
 # Redis settings
 redis_memory_size = 1

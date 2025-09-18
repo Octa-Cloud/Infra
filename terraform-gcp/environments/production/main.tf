@@ -1,71 +1,90 @@
 terraform {
-  required_version = ">= 1.0"
-  required_providers {
+  required_version = ">= 1.0"                      # Terraform 최소 버전
+  required_providers {                              # 사용할 프로바이더 명시
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 5.0"                           # google provider 버전
     }
   }
 }
 
 provider "google" {
-  project = var.project_id
-  region  = var.region
+  project = var.project_id                          # 기본 프로젝트 ID
+  region  = var.region                              # 기본 리전
 }
 
 # Data sources
-data "google_client_config" "default" {}
+data "google_client_config" "default" {}            # 현재 gcloud 클라이언트 정보
 
 # VPC Module
-module "vpc" {
+module "vpc" {                                      # VPC 모듈 호출
   source = "../../modules/vpc"
 
-  name               = var.project_name
-  region            = var.region
-  availability_zones = var.availability_zones
-  subnet_cidrs      = var.subnet_cidrs
-  pods_cidr_ranges  = var.pods_cidr_ranges
-  services_cidr_ranges = var.services_cidr_ranges
+  name                   = var.project_name         # VPC 이름 프리픽스
+  region                 = var.region               # 리전
+  availability_zones     = var.availability_zones   # AZ 목록
+  subnet_cidrs           = var.subnet_cidrs         # 서브넷 CIDR
+  pods_cidr_ranges       = var.pods_cidr_ranges     # Pods 세컨더리 범위
+  services_cidr_ranges   = var.services_cidr_ranges # Services 세컨더리 범위
+}
+
+############################################
+# Private Service Connect for Cloud SQL
+# - VPC에 Service Networking 피어링을 생성해
+#   Cloud SQL Private IP를 사용할 수 있게 합니다
+############################################
+resource "google_compute_global_address" "private_service_range" {
+  name          = "${var.project_name}-ps-range"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = module.vpc.vpc_id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = module.vpc.vpc_id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
 }
 
 # GKE Module
-module "gke" {
+module "gke" {                                      # GKE 모듈 호출
   source = "../../modules/gke"
 
-  project_id    = var.project_id
-  cluster_name  = "${var.project_name}-cluster"
-  region        = var.region
-  network       = module.vpc.vpc_name
-  subnetwork    = module.vpc.subnet_names[0]
-  enable_autopilot = var.enable_autopilot
+  project_id      = var.project_id
+  cluster_name    = "${var.project_name}-cluster"  # 클러스터 이름
+  region          = var.region
+  network         = module.vpc.vpc_name             # VPC 이름
+  subnetwork      = module.vpc.subnet_names[0]      # 사용할 서브넷 이름
+  enable_autopilot = var.enable_autopilot           # Autopilot 여부
 
-  depends_on = [module.vpc]
+  depends_on = [module.vpc]                         # VPC 생성 후 클러스터 생성
 }
 
 # Cloud SQL (MySQL)
-resource "google_sql_database_instance" "mysql" {
+resource "google_sql_database_instance" "mysql" {  # Cloud SQL MySQL 인스턴스
   name             = "${var.project_name}-mysql"
   database_version = "MYSQL_8_0"
   region           = var.region
   project          = var.project_id
 
   settings {
-    tier = var.db_tier
-    disk_size = var.db_disk_size
-    disk_type = var.db_disk_type
-    disk_autoresize = true
-    disk_autoresize_limit = 100
+    tier                 = var.db_tier              # 머신 티어(사양)
+    disk_size            = var.db_disk_size         # 디스크 크기(GB)
+    disk_type            = var.db_disk_type         # 디스크 유형(PD_SSD)
+    disk_autoresize      = true                     # 자동 확장 허용
+    disk_autoresize_limit = 100                     # 자동 확장 상한
 
-    ip_configuration {
-      ipv4_enabled    = false
-      private_network = module.vpc.vpc_id
-      require_ssl     = true
+    ip_configuration {                              # 네트워크 설정
+      ipv4_enabled    = false                       # 공인 IP 비활성화
+      private_network = module.vpc.vpc_id           # VPC 네트워크 사용(프라이빗 IP)
+      ssl_mode        = "ENCRYPTED_ONLY"           # require_ssl 대체
     }
 
-    backup_configuration {
-      enabled                        = true
-      start_time                     = "03:00"
-      point_in_time_recovery_enabled = true
+    backup_configuration {                           # 백업/복구 설정(MySQL)
+      enabled                = true
+      start_time             = "03:00"
+      binary_log_enabled     = true                  # MySQL PITR용, binlog 활성화
       transaction_log_retention_days = 7
       backup_retention_settings {
         retained_backups = 7
@@ -73,29 +92,32 @@ resource "google_sql_database_instance" "mysql" {
       }
     }
 
-    maintenance_window {
-      day          = 7
-      hour         = 3
+    maintenance_window {                             # 유지보수 창
+      day          = 7                               # 일(일요일)
+      hour         = 3                               # 03:00
       update_track = "stable"
     }
   }
 
   deletion_protection = false
+  depends_on = [
+    google_service_networking_connection.private_vpc_connection
+  ]
 }
 
-resource "google_sql_database" "user_db" {
+resource "google_sql_database" "user_db" {        # user-service 용 DB 스키마
   name     = "user_db"
   instance = google_sql_database_instance.mysql.name
   project  = var.project_id
 }
 
-resource "google_sql_database" "sleep_db" {
+resource "google_sql_database" "sleep_db" {       # sleep-service 용 DB 스키마
   name     = "sleep_db"
   instance = google_sql_database_instance.mysql.name
   project  = var.project_id
 }
 
-resource "google_sql_user" "mysql_user" {
+resource "google_sql_user" "mysql_user" {        # MySQL 사용자 계정
   name     = var.db_username
   instance = google_sql_database_instance.mysql.name
   password = var.db_password
@@ -103,7 +125,7 @@ resource "google_sql_user" "mysql_user" {
 }
 
 # Memorystore (Redis)
-resource "google_redis_instance" "redis" {
+resource "google_redis_instance" "redis" {        # Memorystore Redis
   name           = "${var.project_name}-redis"
   tier           = "STANDARD_HA"
   memory_size_gb = var.redis_memory_size
@@ -113,7 +135,7 @@ resource "google_redis_instance" "redis" {
   location_id             = var.availability_zones[0]
   alternative_location_id = var.availability_zones[1]
 
-  redis_version     = "REDIS_7_0"
+  redis_version     = "REDIS_7_0"                 # 버전
   display_name      = "Redis for microservices"
   reserved_ip_range = "10.0.0.0/29"
 
@@ -121,25 +143,25 @@ resource "google_redis_instance" "redis" {
 }
 
 # Firestore (MongoDB 대체)
-resource "google_firestore_database" "firestore" {
+resource "google_firestore_database" "firestore" { # Firestore (DocumentDB 대체)
   project     = var.project_id
-  database_id = "(default)"
+  name        = "(default)"          # database_id 역할, provider v5에서는 name 사용
   location_id = var.region
   type        = "FIRESTORE_NATIVE"
 }
 
 # Pub/Sub (Kafka 대체)
-resource "google_pubsub_topic" "user_events" {
+resource "google_pubsub_topic" "user_events" {    # Pub/Sub Topic (user)
   name    = "user-events"
   project = var.project_id
 }
 
-resource "google_pubsub_topic" "sleep_events" {
+resource "google_pubsub_topic" "sleep_events" {   # Pub/Sub Topic (sleep)
   name    = "sleep-events"
   project = var.project_id
 }
 
-resource "google_pubsub_subscription" "user_events_sub" {
+resource "google_pubsub_subscription" "user_events_sub" { # 사용자 이벤트 서브스크립션
   name  = "user-events-subscription"
   topic = google_pubsub_topic.user_events.name
   project = var.project_id
@@ -147,7 +169,7 @@ resource "google_pubsub_subscription" "user_events_sub" {
   ack_deadline_seconds = 20
 }
 
-resource "google_pubsub_subscription" "sleep_events_sub" {
+resource "google_pubsub_subscription" "sleep_events_sub" { # 수면 이벤트 서브스크립션
   name  = "sleep-events-subscription"
   topic = google_pubsub_topic.sleep_events.name
   project = var.project_id
@@ -156,19 +178,16 @@ resource "google_pubsub_subscription" "sleep_events_sub" {
 }
 
 # Container Registry
-resource "google_container_registry" "registry" {
-  project = var.project_id
-  location = var.region
-}
+# Artifact Registry를 사용하므로 (구) Container Registry 리소스는 생성하지 않습니다.
 
 # Service Account for GKE
-resource "google_service_account" "gke_sa" {
+resource "google_service_account" "gke_sa" {      # GKE용 서비스 계정
   account_id   = "${var.project_name}-gke-sa"
   display_name = "GKE Service Account"
   project      = var.project_id
 }
 
-resource "google_project_iam_member" "gke_sa_roles" {
+resource "google_project_iam_member" "gke_sa_roles" { # SA에 필요한 역할 바인딩
   for_each = toset([
     "roles/container.nodeServiceAccount",
     "roles/storage.objectViewer",
@@ -184,7 +203,7 @@ resource "google_project_iam_member" "gke_sa_roles" {
 }
 
 # Workload Identity
-resource "google_service_account_iam_member" "workload_identity" {
+resource "google_service_account_iam_member" "workload_identity" { # Workload Identity 바인딩
   service_account_id = google_service_account.gke_sa.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/gke-sa]"

@@ -4,8 +4,8 @@ metadata:
   name: mongodb-secret
 type: Opaque
 data:
-  username: YWRtaW4=  # base64 encoded 'admin'
-  password: cGFzc3dvcmQ=  # base64 encoded 'password' - change this!
+  username: YWRtaW4=
+  password: cGFzc3dvcmQ=
 ---
 apiVersion: apps/v1
 kind: Deployment
