@@ -1,11 +1,11 @@
 output "vpc_id" {
   description = "ID of the VPC"
-  value       = module.vpc.vpc_id
+  value       = var.manage_vpc ? module.vpc[0].vpc_id : data.google_compute_network.existing_vpc[0].self_link
 }
 
 output "vpc_name" {
   description = "Name of the VPC"
-  value       = module.vpc.vpc_name
+  value       = var.manage_vpc ? module.vpc[0].vpc_name : data.google_compute_network.existing_vpc[0].name
 }
 
 output "cluster_name" {
@@ -40,19 +40,19 @@ output "mysql_private_ip" {
 
 output "redis_host" {
   description = "Redis host"
-  value       = google_redis_instance.redis.host
+  value       = var.manage_redis ? google_redis_instance.redis[0].host : data.google_redis_instance.existing[0].host
 }
 
 output "redis_port" {
   description = "Redis port"
-  value       = google_redis_instance.redis.port
+  value       = var.manage_redis ? google_redis_instance.redis[0].port : data.google_redis_instance.existing[0].port
 }
 
 output "pubsub_topics" {
   description = "Pub/Sub topics"
   value = {
-    user_events  = google_pubsub_topic.user_events.name
-    sleep_events = google_pubsub_topic.sleep_events.name
+    user_events  = var.manage_pubsub ? google_pubsub_topic.user_events[0].name : data.google_pubsub_topic.user_events[0].name
+    sleep_events = var.manage_pubsub ? google_pubsub_topic.sleep_events[0].name : data.google_pubsub_topic.sleep_events[0].name
   }
 }
 

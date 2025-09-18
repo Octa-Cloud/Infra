@@ -80,3 +80,34 @@ variable "redis_memory_size" {
   type        = number
   default     = 1
 }
+
+# Management toggles: when false, use data sources instead of creating resources
+variable "manage_vpc" {
+  description = "Whether to create/manage VPC with Terraform"
+  type        = bool
+  default     = false
+}
+
+variable "manage_redis" {
+  description = "Whether to create/manage Redis with Terraform"
+  type        = bool
+  default     = false
+}
+
+variable "manage_pubsub" {
+  description = "Whether to create/manage Pub/Sub topics with Terraform"
+  type        = bool
+  default     = false
+}
+
+variable "manage_service_account" {
+  description = "Whether to create/manage GKE service account with Terraform"
+  type        = bool
+  default     = false
+}
+
+variable "manage_firestore" {
+  description = "Whether to create/manage Firestore database with Terraform"
+  type        = bool
+  default     = false
+}

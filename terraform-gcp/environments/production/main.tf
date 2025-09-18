@@ -18,6 +18,7 @@ data "google_client_config" "default" {}            # 현재 gcloud 클라이언
 
 # VPC Module
 module "vpc" {                                      # VPC 모듈 호출
+  count  = var.manage_vpc ? 1 : 0
   source = "../../modules/vpc"
 
   name                   = var.project_name         # VPC 이름 프리픽스
@@ -26,6 +27,13 @@ module "vpc" {                                      # VPC 모듈 호출
   subnet_cidrs           = var.subnet_cidrs         # 서브넷 CIDR
   pods_cidr_ranges       = var.pods_cidr_ranges     # Pods 세컨더리 범위
   services_cidr_ranges   = var.services_cidr_ranges # Services 세컨더리 범위
+}
+
+# Use data sources when manage_vpc=false
+data "google_compute_network" "existing_vpc" {
+  count   = var.manage_vpc ? 0 : 1
+  name    = var.project_name
+  project = var.project_id
 }
 
 ############################################
@@ -38,11 +46,11 @@ resource "google_compute_global_address" "private_service_range" {
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 16
-  network       = module.vpc.vpc_id
+  network       = var.manage_vpc ? module.vpc[0].vpc_id : data.google_compute_network.existing_vpc[0].self_link
 }
 
 resource "google_service_networking_connection" "private_vpc_connection" {
-  network                 = module.vpc.vpc_id
+  network                 = var.manage_vpc ? module.vpc[0].vpc_id : data.google_compute_network.existing_vpc[0].self_link
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
 }
@@ -54,11 +62,9 @@ module "gke" {                                      # GKE 모듈 호출
   project_id      = var.project_id
   cluster_name    = "${var.project_name}-cluster"  # 클러스터 이름
   region          = var.region
-  network         = module.vpc.vpc_name             # VPC 이름
-  subnetwork      = module.vpc.subnet_names[0]      # 사용할 서브넷 이름
+  network         = var.manage_vpc ? module.vpc[0].vpc_name : data.google_compute_network.existing_vpc[0].name
+  subnetwork      = var.manage_vpc ? module.vpc[0].subnet_names[0] : "${var.project_name}-subnet-1"
   enable_autopilot = var.enable_autopilot           # Autopilot 여부
-
-  depends_on = [module.vpc]                         # VPC 생성 후 클러스터 생성
 }
 
 # Cloud SQL (MySQL)
@@ -77,7 +83,7 @@ resource "google_sql_database_instance" "mysql" {  # Cloud SQL MySQL 인스턴�
 
     ip_configuration {                              # 네트워크 설정
       ipv4_enabled    = false                       # 공인 IP 비활성화
-      private_network = module.vpc.vpc_id           # VPC 네트워크 사용(프라이빗 IP)
+      private_network = var.manage_vpc ? module.vpc[0].vpc_id : data.google_compute_network.existing_vpc[0].self_link
       ssl_mode        = "ENCRYPTED_ONLY"           # require_ssl 대체
     }
 
@@ -126,6 +132,7 @@ resource "google_sql_user" "mysql_user" {        # MySQL 사용자 계정
 
 # Memorystore (Redis)
 resource "google_redis_instance" "redis" {        # Memorystore Redis
+  count          = var.manage_redis ? 1 : 0
   name           = "${var.project_name}-redis"
   tier           = "STANDARD_HA"
   memory_size_gb = var.redis_memory_size
@@ -142,8 +149,16 @@ resource "google_redis_instance" "redis" {        # Memorystore Redis
   auth_enabled = true
 }
 
+data "google_redis_instance" "existing" {
+  count    = var.manage_redis ? 0 : 1
+  name     = "${var.project_name}-redis"
+  region   = var.region
+  project  = var.project_id
+}
+
 # Firestore (MongoDB 대체)
 resource "google_firestore_database" "firestore" { # Firestore (DocumentDB 대체)
+  count       = var.manage_firestore ? 1 : 0
   project     = var.project_id
   name        = "(default)"          # database_id 역할, provider v5에서는 name 사용
   location_id = var.region
@@ -152,18 +167,32 @@ resource "google_firestore_database" "firestore" { # Firestore (DocumentDB 대�
 
 # Pub/Sub (Kafka 대체)
 resource "google_pubsub_topic" "user_events" {    # Pub/Sub Topic (user)
+  count   = var.manage_pubsub ? 1 : 0
   name    = "user-events"
   project = var.project_id
 }
 
 resource "google_pubsub_topic" "sleep_events" {   # Pub/Sub Topic (sleep)
+  count   = var.manage_pubsub ? 1 : 0
+  name    = "sleep-events"
+  project = var.project_id
+}
+
+data "google_pubsub_topic" "user_events" {
+  count   = var.manage_pubsub ? 0 : 1
+  name    = "user-events"
+  project = var.project_id
+}
+
+data "google_pubsub_topic" "sleep_events" {
+  count   = var.manage_pubsub ? 0 : 1
   name    = "sleep-events"
   project = var.project_id
 }
 
 resource "google_pubsub_subscription" "user_events_sub" { # 사용자 이벤트 서브스크립션
   name  = "user-events-subscription"
-  topic = google_pubsub_topic.user_events.name
+  topic = var.manage_pubsub ? google_pubsub_topic.user_events[0].name : data.google_pubsub_topic.user_events[0].name
   project = var.project_id
 
   ack_deadline_seconds = 20
@@ -171,7 +200,7 @@ resource "google_pubsub_subscription" "user_events_sub" { # 사용자 이벤트 
 
 resource "google_pubsub_subscription" "sleep_events_sub" { # 수면 이벤트 서브스크립션
   name  = "sleep-events-subscription"
-  topic = google_pubsub_topic.sleep_events.name
+  topic = var.manage_pubsub ? google_pubsub_topic.sleep_events[0].name : data.google_pubsub_topic.sleep_events[0].name
   project = var.project_id
 
   ack_deadline_seconds = 20
@@ -182,6 +211,7 @@ resource "google_pubsub_subscription" "sleep_events_sub" { # 수면 이벤트 �
 
 # Service Account for GKE
 resource "google_service_account" "gke_sa" {      # GKE용 서비스 계정
+  count        = var.manage_service_account ? 1 : 0
   account_id   = "${var.project_name}-gke-sa"
   display_name = "GKE Service Account"
   project      = var.project_id
@@ -199,12 +229,13 @@ resource "google_project_iam_member" "gke_sa_roles" { # SA에 필요한 역할 �
 
   project = var.project_id
   role    = each.value
-  member  = "serviceAccount:${google_service_account.gke_sa.email}"
+  member  = var.manage_service_account ? "serviceAccount:${google_service_account.gke_sa[0].email}" : "serviceAccount:${var.project_name}-gke-sa@${var.project_id}.iam.gserviceaccount.com"
 }
 
 # Workload Identity
 resource "google_service_account_iam_member" "workload_identity" { # Workload Identity 바인딩
-  service_account_id = google_service_account.gke_sa.name
+  count              = var.manage_service_account ? 1 : 0
+  service_account_id = google_service_account.gke_sa[0].name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/gke-sa]"
 }
