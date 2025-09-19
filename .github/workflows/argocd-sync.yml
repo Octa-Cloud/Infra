@@ -62,9 +62,9 @@ jobs:
         id: endpoint
         run: |
           set -euo pipefail
-          IP="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-          HOST="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-          PORT="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80)"
+          IP="$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+          HOST="$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+          PORT="$(kubectl -n argocd get svc argocd-server -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80)"
           if [ -n "$HOST" ]; then ENDPOINT="$HOST"; else ENDPOINT="$IP"; fi
           if [ -z "$ENDPOINT" ]; then exit 1; fi
           echo "ARGOCD_SERVER=${ENDPOINT}:${PORT}" >> "$GITHUB_ENV"
