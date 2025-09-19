@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           timeout 30s argocd login "$ARGOCD_SERVER" $ARGOCD_FLAGS \
-            --auth-token "$ARGOCD_TOKEN" -v
+            --auth-token "$ARGOCD_TOKEN"
 
 
       - name: Update Application with new image tag
