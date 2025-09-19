@@ -47,56 +47,68 @@ jobs:
       - name: Get GKE credentials
         run: |
           set -euo pipefail
-          gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} --region ${GCP_REGION} --project ${GCP_PROJECT_ID}
+          gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" --region "${GCP_REGION}" --project "${GCP_PROJECT_ID}"
 
       - name: Install ArgoCD CLI
         run: |
           curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
           rm argocd-linux-amd64
+          argocd version --client
 
-      - name: Get ArgoCD admin password
-        run: |
-          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-          echo "ARGOCD_PASSWORD=$ARGOCD_PASSWORD" >> $GITHUB_ENV
-
-      - name: Get ArgoCD server URL
-        run: |
-          ARGOCD_SERVER=$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "ARGOCD_SERVER=$ARGOCD_SERVER" >> $GITHUB_ENV
-
-      - name: Login to ArgoCD
-        env:
-          ARGOCD_OPTS: "--insecure --grpc-web --plaintext"
+      - name: Ensure SA and get token
         run: |
           set -euo pipefail
-          echo "y" | argocd login "$ARGOCD_SERVER" \
-            --username admin \
-            --password "$ARGOCD_PASSWORD" \
-            --insecure --grpc-web --plaintext
+          kubectl -n argocd create sa argocd-manager --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n argocd create rolebinding argocd-manager-binding --clusterrole=admin --serviceaccount=argocd:argocd-manager --dry-run=client -o yaml | kubectl apply -f -
+          echo "ARGOCD_TOKEN=$(kubectl -n argocd create token argocd-manager)" >> "$GITHUB_ENV"
+
+      - name: Get ArgoCD server endpoint
+        id: endpoint
+        run: |
+          set -euo pipefail
+          IP="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+          HOST="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+          PORT="$(kubectl -n argocd get svc argocd-server-lb -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80)"
+          if [ -n "$HOST" ]; then ENDPOINT="$HOST"; else ENDPOINT="$IP"; fi
+          if [ -z "$ENDPOINT" ]; then exit 1; fi
+          echo "ARGOCD_SERVER=${ENDPOINT}:${PORT}" >> "$GITHUB_ENV"
+          if [ "$PORT" = "80" ]; then
+            echo "ARGOCD_FLAGS=--insecure --plaintext" >> "$GITHUB_ENV"
+          else
+            echo "ARGOCD_FLAGS=--insecure --grpc-web" >> "$GITHUB_ENV"
+          fi
+
+      - name: Login to ArgoCD
+        run: |
+          set -euo pipefail
+          argocd login "$ARGOCD_SERVER" --auth-token "$ARGOCD_TOKEN" $ARGOCD_FLAGS
 
       - name: Update Application with new image tag
         run: |
           set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          
-          echo "Updating ${APP_NAME} with image tag: ${{ github.event.inputs.IMAGE_TAG }}"
-          
-          # Update the application source parameters
-          argocd app set ${APP_NAME} --helm-set image.tag=${{ github.event.inputs.IMAGE_TAG }}
-          
-          # Sync the application
-          argocd app sync ${APP_NAME} --force
+          TAG="${{ github.event.inputs.IMAGE_TAG }}"
+          argocd app set "${APP_NAME}" --helm-set image.tag="${TAG}"
+
+      - name: Sync Application
+        run: |
+          set -euo pipefail
+          ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
+          APP_NAME="user-service-${ENV}"
+          argocd app sync "${APP_NAME}" --force
 
       - name: Wait for sync completion
         run: |
+          set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          argocd app wait ${APP_NAME} --timeout 300
+          argocd app wait "${APP_NAME}" --timeout 300
 
       - name: Get application status
         run: |
+          set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          argocd app get ${APP_NAME}
+          argocd app get "${APP_NAME}"
