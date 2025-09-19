@@ -1,6 +1,10 @@
 name: ArgoCD Sync
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'k8s-gcp/argocd/**'
   workflow_dispatch:
     inputs:
       IMAGE_TAG:
