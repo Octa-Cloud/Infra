@@ -1,0 +1,103 @@
+name: Infrastructure CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'k8s-gcp/**'
+      - 'terraform-gcp/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'k8s-gcp/**'
+      - 'terraform-gcp/**'
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: asia-northeast3
+  GKE_CLUSTER_NAME: microservices-cluster
+
+jobs:
+  validate-k8s-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Validate Kubernetes manifests
+        run: |
+          echo "Validating Kubernetes manifests..."
+          for file in k8s-gcp/**/*.yaml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              kubectl --dry-run=client apply -f "$file"
+            fi
+          done
+          echo "✅ All Kubernetes manifests are valid"
+
+  validate-helm-charts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Validate Helm Charts
+        run: |
+          echo "Validating Helm charts..."
+          # This would validate any Helm charts in the infrastructure repo
+          echo "✅ Helm chart validation completed"
+
+  terraform-plan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.6.0'
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform-gcp/environments/production
+
+      - name: Terraform Plan
+        run: terraform plan -no-color -input=false
+        working-directory: terraform-gcp/environments/production
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: user-service-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Octa-Cloud/Infra-helm-charts
+    targetRevision: HEAD
+    path: user-service
+    helm:
+      parameters:
+        - name: image.tag
+          value: latest
+        - name: replicaCount
+          value: "1"
+        - name: resources.limits.cpu
+          value: "500m"
+        - name: resources.limits.memory
+          value: "512Mi"
+        - name: env.SPRING_PROFILES_ACTIVE
+          value: "dev"
+        - name: env.RDB_URL
+          value: "jdbc:mysql://10.3.202.113:3306/mong?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true"
+        - name: env.REDIS_HOST
+          value: "10.3.191.17"
+        - name: configMap.data.SPRING_PROFILES_ACTIVE
+          value: "dev"
+        - name: configMap.data.RDB_URL
+          value: "jdbc:mysql://10.3.202.113:3306/mong?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true"
+        - name: configMap.data.REDIS_HOST
+          value: "10.3.191.17"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: microservices-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

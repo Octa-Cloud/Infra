@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: user-service-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Octa-Cloud/Infra-helm-charts
+    targetRevision: HEAD
+    path: user-service
+    helm:
+      parameters:
+        - name: image.tag
+          value: latest
+        - name: replicaCount
+          value: "3"
+        - name: resources.limits.cpu
+          value: "1000m"
+        - name: resources.limits.memory
+          value: "1Gi"
+        - name: resources.requests.cpu
+          value: "200m"
+        - name: resources.requests.memory
+          value: "512Mi"
+        - name: autoscaling.enabled
+          value: "true"
+        - name: autoscaling.minReplicas
+          value: "3"
+        - name: autoscaling.maxReplicas
+          value: "10"
+        - name: env.SPRING_PROFILES_ACTIVE
+          value: "prod"
+        - name: env.RDB_URL
+          value: "jdbc:mysql://mysql-service:3306/mong?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true"
+        - name: env.REDIS_HOST
+          value: "redis-service"
+        - name: configMap.data.SPRING_PROFILES_ACTIVE
+          value: "prod"
+        - name: configMap.data.RDB_URL
+          value: "jdbc:mysql://mysql-service:3306/mong?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true"
+        - name: configMap.data.REDIS_HOST
+          value: "redis-service"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: microservices-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
