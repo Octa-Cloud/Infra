@@ -69,8 +69,10 @@ jobs:
           if [ -z "$ENDPOINT" ]; then exit 1; fi
           echo "ARGOCD_SERVER=${ENDPOINT}:${PORT}" >> "$GITHUB_ENV"
           if [ "$PORT" = "80" ]; then
-            echo "ARGOCD_FLAGS=--insecure --plaintext" >> "$GITHUB_ENV"
+            # For HTTP endpoints, use grpc-web over plaintext
+            echo "ARGOCD_FLAGS=--insecure --grpc-web --plaintext" >> "$GITHUB_ENV"
           else
+            # For HTTPS endpoints, use grpc-web with TLS (insecure to skip SAN during IP use if any)
             echo "ARGOCD_FLAGS=--insecure --grpc-web" >> "$GITHUB_ENV"
           fi
 
