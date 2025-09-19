@@ -71,7 +71,7 @@ jobs:
           if [ -z "$ENDPOINT" ]; then echo "No external endpoint for Argo CD"; exit 1; fi
 
           echo "ARGOCD_SERVER=${ENDPOINT}:80" >> "$GITHUB_ENV"
-          echo "ARGOCD_FLAGS=--plaintext" >> "$GITHUB_ENV"
+          echo "ARGOCD_FLAGS=--insecure --grpc-web --plaintext" >> "$GITHUB_ENV"
           # 혹시 남아있을 수 있는 전역 옵션 제거
           unset ARGOCD_OPTS || true
 
