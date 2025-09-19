@@ -22,6 +22,7 @@ env:
   GCP_REGION: asia-northeast3
   GKE_CLUSTER_NAME: microservices-cluster
   NAMESPACE: microservices
+  ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
 
 jobs:
   argocd-sync:
@@ -56,12 +57,6 @@ jobs:
           rm argocd-linux-amd64
           argocd version --client
 
-      - name: Ensure SA and get token
-        run: |
-          set -euo pipefail
-          kubectl -n argocd create sa argocd-manager --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n argocd create rolebinding argocd-manager-binding --clusterrole=admin --serviceaccount=argocd:argocd-manager --dry-run=client -o yaml | kubectl apply -f -
-          echo "ARGOCD_TOKEN=$(kubectl -n argocd create token argocd-manager)" >> "$GITHUB_ENV"
 
       - name: Get ArgoCD server endpoint
         id: endpoint
