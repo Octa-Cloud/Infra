@@ -79,10 +79,13 @@ jobs:
             echo "ARGOCD_FLAGS=--insecure --grpc-web" >> "$GITHUB_ENV"
           fi
 
-      - name: Login to ArgoCD
+      # 토큰 로그인 (위 단계에서 생성/주입된 ARGOCD_TOKEN 사용)
+      - name: Login to ArgoCD (token)
         run: |
           set -euo pipefail
-          argocd login "$ARGOCD_SERVER" --auth-token "$ARGOCD_TOKEN" $ARGOCD_FLAGS
+          timeout 30s argocd login "$ARGOCD_SERVER" $ARGOCD_FLAGS \
+            --auth-token "$ARGOCD_TOKEN" -v
+
 
       - name: Update Application with new image tag
         run: |
@@ -90,25 +93,25 @@ jobs:
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
           TAG="${{ github.event.inputs.IMAGE_TAG }}"
-          argocd app set "${APP_NAME}" --helm-set image.tag="${TAG}"
+          argocd $ARGOCD_FLAGS --auth-token "$ARGOCD_TOKEN" app set "${APP_NAME}" --helm-set image.tag="${TAG}"
 
       - name: Sync Application
         run: |
           set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          argocd app sync "${APP_NAME}" --force
+          argocd $ARGOCD_FLAGS --auth-token "$ARGOCD_TOKEN" app sync "${APP_NAME}" --force
 
       - name: Wait for sync completion
         run: |
           set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          argocd app wait "${APP_NAME}" --timeout 300
+          argocd $ARGOCD_FLAGS --auth-token "$ARGOCD_TOKEN" app wait "${APP_NAME}" --timeout 300
 
       - name: Get application status
         run: |
           set -euo pipefail
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
-          argocd app get "${APP_NAME}"
+          argocd $ARGOCD_FLAGS --auth-token "$ARGOCD_TOKEN" app get "${APP_NAME}"
