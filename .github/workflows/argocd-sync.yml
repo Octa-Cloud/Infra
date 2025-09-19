@@ -80,6 +80,7 @@ jobs:
           ENV="${{ github.event.inputs.ENVIRONMENT || 'dev' }}"
           APP_NAME="user-service-${ENV}"
           TAG="${{ github.event.inputs.IMAGE_TAG }}"
+          echo "SERVER=$ARGOCD_SERVER FLAGS=$ARGOCD_FLAGS APP=$APP_NAME TAG=$TAG"
           argocd $ARGOCD_FLAGS --server "$ARGOCD_SERVER" --auth-token "$ARGOCD_TOKEN" app set "${APP_NAME}" --helm-set image.tag="${TAG}"
 
       - name: Sync Application
