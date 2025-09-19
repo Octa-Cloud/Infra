@@ -67,9 +67,13 @@ jobs:
 
       - name: Login to ArgoCD
         env:
-          ARGOCD_OPTS: "--insecure --grpc-web"
+          ARGOCD_OPTS: "--insecure --grpc-web --plaintext"
         run: |
-          echo "y" | argocd login $ARGOCD_SERVER --username admin --password $ARGOCD_PASSWORD --insecure --grpc-web
+          set -euo pipefail
+          echo "y" | argocd login "$ARGOCD_SERVER" \
+            --username admin \
+            --password "$ARGOCD_PASSWORD" \
+            --insecure --grpc-web --plaintext
 
       - name: Update Application with new image tag
         run: |
